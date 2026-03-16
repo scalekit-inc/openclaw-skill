@@ -70,15 +70,50 @@ def get_scalekit_client():
 
 def generate_link(connection_name: str, identifier: str) -> None:
     """
-    Get or create a connected account and generate an authorization link if not active.
-    If already active, reports the connection status.
+    Check or create a connected account and generate an authorization link if not active.
+    For OAuth connections: uses get_or_create and generates a magic link if not active.
+    For non-OAuth connections: only checks if the account exists and is active — directs
+    the user to the Scalekit Dashboard if not found or not active.
     """
-    connect = get_connect_client()
+    connection_type = _get_connection_type(connection_name)
 
     print(f"   Connection: {connection_name}")
     print(f"   Identifier: {identifier}")
+    print(f"   Type: {connection_type}")
     print()
 
+    is_oauth = connection_type.upper() == "OAUTH"
+
+    if not is_oauth:
+        # Non-OAuth: account must already exist and be active — no magic link support
+        client = get_scalekit_client()
+        try:
+            response = client.actions.get_connected_account(
+                connection_name=connection_name,
+                identifier=identifier,
+            )
+            connected_account = response.connected_account
+
+            print(f"   Connected Account ID: {connected_account.id}")
+            print(f"   Status: {connected_account.status}")
+
+            if connected_account.status != "ACTIVE":
+                print(f"\n{RED}❌ Connection {connection_name} exists but is not active (status: {connected_account.status}).{RESET}")
+                print(f"   Please activate it in the Scalekit Dashboard.")
+                sys.exit(1)
+            else:
+                print(f"\n{GREEN}✅ {connection_name} is connected and active!{RESET}")
+
+        except SystemExit:
+            raise
+        except Exception:
+            print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
+            print(f"   Please create and configure this connection in the Scalekit Dashboard.")
+            sys.exit(1)
+        return
+
+    # OAuth flow
+    connect = get_connect_client()
     try:
         response = connect.get_or_create_connected_account(
             connection_name=connection_name,
@@ -101,12 +136,8 @@ def generate_link(connection_name: str, identifier: str) -> None:
             print(f"   {BLUE}{link_response.link}{RESET}")
             print()
 
-            try:
-                input(f"⎆ Press Enter after authorizing {connection_name}...")
-                print(f"\n{GREEN}✅ Done! You can now execute tools for {connection_name}.{RESET}")
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{YELLOW}(Non-interactive mode — authorize the link above, then re-run to continue.){RESET}")
-                sys.exit(0)
+            print(f"{YELLOW}Authorize the link above, then re-run to continue.{RESET}")
+            sys.exit(0)
         else:
             print(f"\n{GREEN}✅ {connection_name} is already connected and active!{RESET}")
 
@@ -117,51 +148,77 @@ def generate_link(connection_name: str, identifier: str) -> None:
 
 def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_input: dict) -> None:
     """
-    Get or create a connected account, prompt for authorization if not active,
-    then execute the specified tool.
+    Verify the connected account is active, then execute the specified tool.
+    For OAuth connections: uses get_or_create and prompts for authorization if not active.
+    For non-OAuth connections: only checks if the account exists and is active — directs
+    the user to the Scalekit Dashboard if not found or not active.
     """
+    connection_type = _get_connection_type(connection_name)
     connect = get_connect_client()
 
     print(f"   Tool: {tool_name}")
     print(f"   Connection: {connection_name}")
     print(f"   Identifier: {identifier}")
+    print(f"   Type: {connection_type}")
     print(f"   Input: {json.dumps(tool_input, indent=2)}")
     print()
 
+    is_oauth = connection_type.upper() == "OAUTH"
+
     try:
-        response = connect.get_or_create_connected_account(
-            connection_name=connection_name,
-            identifier=identifier
-        )
-        connected_account = response.connected_account
-
-        print(f"   Connected Account ID: {connected_account.id}")
-        print(f"   Status: {connected_account.status}")
-
-        if connected_account.status != "ACTIVE":
-            print(f"\n{YELLOW}⚠️  {connection_name} is not connected (status: {connected_account.status}){RESET}")
-
-            link_response = connect.get_authorization_link(
-                connection_name=connection_name,
-                identifier=identifier
-            )
-
-            print(f"\n🔗 Click the link to authorize {connection_name}:")
-            print(f"   {BLUE}{link_response.link}{RESET}")
-            print()
-
+        if not is_oauth:
+            # Non-OAuth: account must already exist and be active
+            client = get_scalekit_client()
             try:
-                input(f"⎆ Press Enter after authorizing {connection_name}...")
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{YELLOW}(Non-interactive mode — authorize the link above, then re-run to execute.){RESET}")
-                sys.exit(0)
+                response = client.actions.get_connected_account(
+                    connection_name=connection_name,
+                    identifier=identifier,
+                )
+                connected_account = response.connected_account
+            except Exception:
+                print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
+                print(f"   Please create and configure this connection in the Scalekit Dashboard.")
+                sys.exit(1)
 
-            # Re-fetch connected account after authorization
+            print(f"   Connected Account ID: {connected_account.id}")
+            print(f"   Status: {connected_account.status}")
+
+            if connected_account.status != "ACTIVE":
+                print(f"\n{RED}❌ Connection {connection_name} exists but is not active (status: {connected_account.status}).{RESET}")
+                print(f"   Please activate it in the Scalekit Dashboard.")
+                sys.exit(1)
+        else:
+            # OAuth flow
             response = connect.get_or_create_connected_account(
                 connection_name=connection_name,
                 identifier=identifier
             )
             connected_account = response.connected_account
+
+            print(f"   Connected Account ID: {connected_account.id}")
+            print(f"   Status: {connected_account.status}")
+
+            if connected_account.status != "ACTIVE":
+                print(f"\n{YELLOW}⚠️  {connection_name} is not connected (status: {connected_account.status}){RESET}")
+
+                link_response = connect.get_authorization_link(
+                    connection_name=connection_name,
+                    identifier=identifier
+                )
+
+                print(f"\n🔗 Click the link to authorize {connection_name}:")
+                print(f"   {BLUE}{link_response.link}{RESET}")
+                print()
+
+                print(f"{YELLOW}Authorize the link above, then re-run to execute.{RESET}")
+                sys.exit(0)
+
+                # Re-fetch connected account after authorization
+                response = connect.get_or_create_connected_account(
+                    connection_name=connection_name,
+                    identifier=identifier
+                )
+                connected_account = response.connected_account
 
         print(f"\n🔧 Executing tool: {BOLD}{tool_name}{RESET}")
 
@@ -178,6 +235,8 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
         else:
             print(result)
 
+    except SystemExit:
+        raise
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
         sys.exit(1)
@@ -192,6 +251,7 @@ def proxy_request(
         body: dict = None,
         output_file: str = None,
         input_file: str = None,
+        extra_headers: dict = None,
 ) -> None:
     """
     Make a proxied HTTP request through Scalekit on behalf of a connected account.
@@ -212,13 +272,25 @@ def proxy_request(
     print()
 
     try:
+        headers = {**(extra_headers or {})}
+        form_data = None
+
         if input_file:
+            filename = os.path.basename(input_file)
+            file_mime = mimetypes.guess_type(input_file)[0] or "application/octet-stream"
             with open(input_file, "rb") as f:
                 file_bytes = f.read()
-            file_mime = mimetypes.guess_type(input_file)[0] or "application/octet-stream"
             print(f"   File size: {len(file_bytes):,} bytes")
             print(f"   File MIME: {file_mime}")
             print()
+
+            # Build proper multipart/form-data body with named 'file' field
+            prepared = requests.Request(
+                "POST", "https://placeholder",
+                files={"file": (filename, file_bytes, file_mime)}
+            ).prepare()
+            form_data = prepared.body
+            headers["Content-Type"] = prepared.headers["Content-Type"]
 
         response = client.actions.request(
             connection_name=connection_name,
@@ -227,8 +299,8 @@ def proxy_request(
             method=method,
             query_params=query_params or {},
             body=body,
-            form_data=file_bytes if input_file else None,
-            headers={"Content-Type": file_mime} if input_file else None,
+            form_data=form_data,
+            headers=headers or None,
         )
 
         content_type = response.headers.get("Content-Type", "")
@@ -309,6 +381,40 @@ def get_authorization(connection_name: str, identifier: str) -> None:
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
         sys.exit(1)
+
+
+def _get_connection_type(connection_name: str) -> str:
+    """
+    Look up the type (e.g. OAUTH, BEARER, BASIC) for a connection by its key_id.
+    Returns the type string, or 'OAUTH' as a safe default if lookup fails.
+    """
+    try:
+        token = get_bearer_token()
+    except Exception:
+        return "OAUTH"
+
+    url = f"{TOOL_ENV_URL.rstrip('/')}/api/v1/connections/app"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    page_token = ""
+
+    while True:
+        try:
+            response = requests.get(url, params={"page_size": 30, "page_token": page_token}, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            return "OAUTH"
+
+        for conn in data.get("connections", []):
+            if conn.get("key_id") == connection_name:
+                return conn.get("type", "OAUTH")
+
+        next_page_token = data.get("next_page_token", "")
+        if not next_page_token:
+            break
+        page_token = next_page_token
+
+    return "OAUTH"
 
 
 def get_bearer_token() -> str:
@@ -481,6 +587,7 @@ Required environment variables:
         help='Unique identifier for the connected account — required for --generate-link and --execute-tool. Defaults to TOOL_IDENTIFIER env var.'
     )
 
+
     # Arguments for --execute-tool
     parser.add_argument(
         '--tool-name',
@@ -517,6 +624,10 @@ Required environment variables:
         '--input-file',
         help='Path to a file to upload as the request body (used with --proxy-request)'
     )
+    parser.add_argument(
+        '--headers',
+        help='JSON string of extra request headers for --proxy-request (e.g. \'{"Notion-Version": "2022-06-28"}\')'
+    )
 
     # Arguments for --get-tool
     parser.add_argument(
@@ -546,20 +657,11 @@ Required environment variables:
         print(f"{RED}❌ Error: TOOL_ENV_URL environment variable is required{RESET}")
         sys.exit(1)
 
-    # Resolve identifier: env var → CLI arg → prompt user
+    # Resolve identifier: env var → CLI arg → error
     if not args.identifier:
         if not TOOL_IDENTIFIER:
-            print(f"{YELLOW}⚠️  Warning: TOOL_IDENTIFIER is not set in your .env config.{RESET}")
-            print(f"   Add TOOL_IDENTIFIER=<your_identifier> to .env to avoid this prompt.")
-            print()
-            try:
-                args.identifier = input("Enter identifier: ").strip()
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{RED}❌ Identifier is required. Set TOOL_IDENTIFIER in .env or pass --identifier.{RESET}")
-                sys.exit(1)
-            if not args.identifier:
-                print(f"{RED}❌ Identifier cannot be empty.{RESET}")
-                sys.exit(1)
+            print(f"{RED}❌ Identifier is required. Set TOOL_IDENTIFIER in .env or pass --identifier.{RESET}")
+            sys.exit(1)
         else:
             args.identifier = TOOL_IDENTIFIER
 
@@ -643,6 +745,14 @@ Required environment variables:
                 print(f"{RED}❌ Error: --body is not valid JSON: {e}{RESET}")
                 sys.exit(1)
 
+        extra_headers = None
+        if args.headers:
+            try:
+                extra_headers = json.loads(args.headers)
+            except json.JSONDecodeError as e:
+                print(f"{RED}❌ Error: --headers is not valid JSON: {e}{RESET}")
+                sys.exit(1)
+
         proxy_request(
             connection_name=args.connection_name,
             identifier=args.identifier,
@@ -652,6 +762,7 @@ Required environment variables:
             body=body,
             output_file=args.output_file,
             input_file=args.input_file,
+            extra_headers=extra_headers,
         )
 
     elif args.get_authorization:

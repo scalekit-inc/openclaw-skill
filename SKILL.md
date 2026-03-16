@@ -1,11 +1,28 @@
 ---
 name: openclaw-tool-executor
-description: General-purpose tool executor for OpenClaw agents. Triggers when the user asks to perform an action using a connected third-party service (e.g. "read my Notion page", "send a Slack message", "query my Google Sheet"). Handles OAuth authorization, tool discovery, execution, and proxy fallback via Scalekit Connect.
-homepage: https://github.com/Avinash-Kamath/openclaw-skill
+description: |
+  Use this skill whenever the user asks for information from, or wants to take an action in, a third-party tool or service. This includes — but is not limited to — searching the web, reading or writing documents, sending messages, querying databases, managing tasks, fetching data from APIs, or interacting with any connected SaaS product (e.g. "search Exa for...", "read my Notion page", "send a Slack message", "get my Google Sheet", "create a GitHub issue", "query Snowflake", "look up a HubSpot contact"). Trigger this skill any time the user's request involves an external service, integration, or data source — even if the provider is not explicitly named. Handles OAuth and non-OAuth (API Key, Bearer, Basic) connections, tool discovery, execution, and proxy fallback via Scalekit Connect.
+homepage: https://github.com/scalekit-inc/openclaw-skill
 metadata:
   openclaw:
     requires:
       bins: ["python3", "uv"]
+      env:
+        - TOOL_CLIENT_ID
+        - TOOL_CLIENT_SECRET
+        - TOOL_ENV_URL
+        - TOOL_IDENTIFIER
+    primaryEnv: TOOL_CLIENT_ID
+    config:
+      requiredEnv:
+        - TOOL_CLIENT_ID
+        - TOOL_CLIENT_SECRET
+        - TOOL_ENV_URL
+      example: |
+        TOOL_CLIENT_ID=skc_your_client_id
+        TOOL_CLIENT_SECRET=your_client_secret
+        TOOL_ENV_URL=https://your-env.scalekit.cloud
+        TOOL_IDENTIFIER=your_default_identifier
     install:
       - id: python-deps
         kind: exec
@@ -15,7 +32,7 @@ metadata:
 
 # OpenClaw Tool Executor
 
-General-purpose tool executor for OpenClaw agents. Uses Scalekit Connect to discover and run tools for any connected OAuth service (Notion, Slack, Gmail, GitHub, etc.).
+General-purpose tool executor for OpenClaw agents. Uses Scalekit Connect to discover and run tools for any connected service — OAuth (Notion, Slack, Gmail, GitHub, etc.) or non-OAuth (API Key, Bearer, Basic auth).
 
 ## Environment Variables
 
@@ -48,17 +65,23 @@ uv run tool_exec.py --list-connections --provider <PROVIDER>
 
 ### Step 2 — Check & Authorize
 
-Run `--generate-link` for every connection type (OAuth, BASIC, or any other). Scalekit handles all auth types uniformly — it checks the account status and only presents a magic link if authorization is needed:
+Run `--generate-link` for the connection. The tool automatically detects the connection type (OAuth vs non-OAuth) and applies the correct auth flow:
 
 ```bash
 uv run tool_exec.py --generate-link \
   --connection-name <CONNECTION_NAME>
 ```
 
-- If the account is already **ACTIVE** → Scalekit reports it as connected, proceed to Step 3.
-- If **not active** → Scalekit generates a magic link. Present it to the user, wait for them to complete the flow, then proceed to Step 3.
+**OAuth connections:**
+- If already **ACTIVE** → proceed to Step 3.
+- If **not active** → a magic link is generated. Present it to the user, wait for them to complete the flow, then proceed to Step 3.
 
-> Never use `--get-authorization` in the execution flow — that is only for inspecting raw OAuth tokens and does not work for BASIC auth connections.
+**Non-OAuth connections (BEARER, BASIC, API Key, etc.):**
+- If account **not found** → stop. Tell the user: *"Please create and configure the `<CONNECTION_NAME>` connection in the Scalekit Dashboard."*
+- If account exists but **not active** → stop. Tell the user: *"Please activate the `<CONNECTION_NAME>` connection in the Scalekit Dashboard."*
+- If **ACTIVE** → proceed to Step 3.
+
+> Never use `--get-authorization` in the execution flow — that is only for inspecting raw OAuth tokens and does not work for non-OAuth connections.
 
 ### Step 3 — Discover Available Tools
 
@@ -106,16 +129,28 @@ uv run tool_exec.py --proxy-request \
 
 > Note: Proxy may be disabled on some environments. If it returns `TOOL_PROXY_DISABLED`, inform the user that this action isn't supported by the current Scalekit tool catalog and suggest they request a new tool from Scalekit.
 
-## Example: Read a Notion Page
+## Example: Search the web with Exa (API Key connection)
+
+```
+User: "Search for latest AI news using Exa"
+```
+
+1. `--list-connections --provider EXA` → `key_id: exa`, `type: API_KEY`
+2. `--generate-link --connection-name exa` → detects API_KEY, checks account → ACTIVE
+3. `--get-tool --provider EXA` → finds `exa_search`
+4. `--execute-tool --tool-name exa_search --connection-name exa --tool-input '{"query": "latest AI news"}'`
+   → returns search results
+
+## Example: Read a Notion Page (OAuth connection)
 
 ```
 User: "Read my Notion page https://notion.so/..."
 ```
 
-1. `--list-connections --provider NOTION` → `key_id: notion-ijIQedmJ`
-2. `--generate-link --connection-name notion-ijIQedmJ` → already ACTIVE, no link needed
+1. `--list-connections --provider NOTION` → `key_id: notion-ijIQedmJ`, `type: OAUTH`
+2. `--generate-link --connection-name notion-ijIQedmJ` → detects OAuth, already ACTIVE
 3. `--get-tool --provider NOTION` → finds `notion_page_get`
-4. `--execute-tool --tool-name notion_page_get --tool-input '{"page_id": "..."}'`
+4. `--execute-tool --tool-name notion_page_get --connection-name notion-ijIQedmJ --tool-input '{"page_id": "..."}'`
    → returns page metadata
 
 ## Example: Action Not Yet in Scalekit
