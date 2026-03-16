@@ -2,6 +2,14 @@
 name: openclaw-tool-executor
 description: |
   Use this skill whenever the user asks for information from, or wants to take an action in, a third-party tool or service. This includes — but is not limited to — searching the web, reading or writing documents, sending messages, querying databases, managing tasks, fetching data from APIs, or interacting with any connected SaaS product (e.g. "search Exa for...", "read my Notion page", "send a Slack message", "get my Google Sheet", "create a GitHub issue", "query Snowflake", "look up a HubSpot contact"). Trigger this skill any time the user's request involves an external service, integration, or data source — even if the provider is not explicitly named. Handles OAuth and non-OAuth (API Key, Bearer, Basic) connections, tool discovery, execution, and proxy fallback via Scalekit Connect.
+
+  ## Provider Mapping
+
+  Some services are accessed through a different provider name in Scalekit. Always use the mapped provider name below:
+
+  | User asks about | Use provider |
+  |---|---|
+  | LinkedIn — profiles, jobs, companies, posts, people search, ads, groups | `HARVESTAPI` |
 homepage: https://github.com/scalekit-inc/openclaw-skill
 metadata:
   openclaw:
@@ -92,18 +100,25 @@ uv run tool_exec.py --get-tool --provider <PROVIDER>
 ```
 
 - Look for a tool that matches the user's intent (e.g. `notion_page_get` for reading a page).
-- If a matching tool **exists** → go to Step 4.
+- If a matching tool **exists** → go to Step 3b.
 - If **no matching tool exists** → go to Step 5 (proxy fallback).
 
-You can also inspect a specific tool's schema:
+### Step 3b — Fetch Tool Schema (mandatory before executing)
+
+**Always** fetch the schema of the matched tool before constructing the input. This tells you the exact parameter names, types, required vs optional fields, and valid enum values:
 
 ```bash
 uv run tool_exec.py --get-tool --tool-name <TOOL_NAME>
 ```
 
+- Read the `input_schema.properties` from the response — use **only** the parameter names defined there.
+- Note which fields are in `required` — these must always be included in `--tool-input`.
+- Use `description` and `display_properties` to understand what each field expects.
+- **Never guess parameter names** — always derive them from the schema.
+
 ### Step 4 — Execute the Tool
 
-Run the matched tool with the appropriate input:
+Construct the tool input using only parameters from the schema fetched in Step 3b, then run:
 
 ```bash
 uv run tool_exec.py --execute-tool \
@@ -129,6 +144,21 @@ uv run tool_exec.py --proxy-request \
 
 > Note: Proxy may be disabled on some environments. If it returns `TOOL_PROXY_DISABLED`, inform the user that this action isn't supported by the current Scalekit tool catalog and suggest they request a new tool from Scalekit.
 
+## Example: Search LinkedIn (via HarvestAPI)
+
+```
+User: "Find software engineers in San Francisco on LinkedIn"
+```
+
+1. `--list-connections --provider HARVESTAPI` → `key_id: harvestapi-xxxx`, `type: API_KEY`
+2. `--generate-link --connection-name harvestapi-xxxx` → detects API_KEY, checks account → ACTIVE
+3. `--get-tool --provider HARVESTAPI` → finds `harvestapi_search_people`
+3b. `--get-tool --tool-name harvestapi_search_people` → schema shows valid params: `first_names`, `last_names`, `search`, `locations`, `current_job_titles`, etc.
+4. `--execute-tool --tool-name harvestapi_search_people --connection-name harvestapi-xxxx --tool-input '{"first_names": "John", "locations": "San Francisco", "current_job_titles": "Software Engineer"}'`
+   → returns matching LinkedIn profiles
+
+> Any LinkedIn-related request (profiles, jobs, companies, posts, people search, ads, groups) → use provider `HARVESTAPI`.
+
 ## Example: Search the web with Exa (API Key connection)
 
 ```
@@ -138,6 +168,7 @@ User: "Search for latest AI news using Exa"
 1. `--list-connections --provider EXA` → `key_id: exa`, `type: API_KEY`
 2. `--generate-link --connection-name exa` → detects API_KEY, checks account → ACTIVE
 3. `--get-tool --provider EXA` → finds `exa_search`
+3b. `--get-tool --tool-name exa_search` → schema shows `query` (required), `num_results`, `type`, etc.
 4. `--execute-tool --tool-name exa_search --connection-name exa --tool-input '{"query": "latest AI news"}'`
    → returns search results
 
@@ -150,6 +181,7 @@ User: "Read my Notion page https://notion.so/..."
 1. `--list-connections --provider NOTION` → `key_id: notion-ijIQedmJ`, `type: OAUTH`
 2. `--generate-link --connection-name notion-ijIQedmJ` → detects OAuth, already ACTIVE
 3. `--get-tool --provider NOTION` → finds `notion_page_get`
+3b. `--get-tool --tool-name notion_page_get` → schema shows `page_id` (required)
 4. `--execute-tool --tool-name notion_page_get --connection-name notion-ijIQedmJ --tool-input '{"page_id": "..."}'`
    → returns page metadata
 
