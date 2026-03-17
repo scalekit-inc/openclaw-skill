@@ -106,8 +106,8 @@ def generate_link(connection_name: str, identifier: str) -> None:
 
         except SystemExit:
             raise
-        except Exception as e:
-            print(f"\n{RED}❌ No connected account found for {connection_name}: {e}{RESET}")
+        except Exception:
+            print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
             print(f"   Please create and configure this connection in the Scalekit Dashboard.")
             sys.exit(1)
         return
