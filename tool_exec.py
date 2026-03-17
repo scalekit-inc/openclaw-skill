@@ -40,6 +40,8 @@ GREEN = '\033[92m'
 RED = '\033[91m'
 YELLOW = '\033[93m'
 BLUE = '\033[94m'
+CYAN = '\033[96m'
+DIM = '\033[2m'
 RESET = '\033[0m'
 
 # Environment variables
@@ -47,10 +49,18 @@ TOOL_CLIENT_ID = os.getenv('TOOL_CLIENT_ID', '')
 TOOL_CLIENT_SECRET = os.getenv('TOOL_CLIENT_SECRET', '')
 TOOL_ENV_URL = os.getenv('TOOL_ENV_URL', '')
 TOOL_IDENTIFIER = os.getenv('TOOL_IDENTIFIER', '')
+TOOL_DEBUG = os.getenv('TOOL_DEBUG', '').lower() in ('1', 'true', 'yes')
+
+
+def dbg(msg: str) -> None:
+    """Print a debug message if TOOL_DEBUG is enabled."""
+    if TOOL_DEBUG:
+        print(f"{DIM}{CYAN}[DEBUG] {msg}{RESET}", file=sys.stderr)
 
 
 def get_connect_client():
     """Initialize and return the Scalekit connect client."""
+    dbg(f"Initializing connect client for {TOOL_ENV_URL}")
     client = scalekit_sdk.ScalekitClient(
         TOOL_ENV_URL,
         TOOL_CLIENT_ID,
@@ -61,6 +71,7 @@ def get_connect_client():
 
 def get_scalekit_client():
     """Initialize and return the full Scalekit client."""
+    dbg(f"Initializing Scalekit client for {TOOL_ENV_URL}")
     return scalekit_sdk.ScalekitClient(
         TOOL_ENV_URL,
         TOOL_CLIENT_ID,
@@ -88,10 +99,12 @@ def generate_link(connection_name: str, identifier: str) -> None:
         # Non-OAuth: account must already exist and be active — no magic link support
         client = get_scalekit_client()
         try:
+            dbg(f"Calling get_connected_account(connection_name={connection_name}, identifier={identifier})")
             response = client.actions.get_connected_account(
                 connection_name=connection_name,
                 identifier=identifier,
             )
+            dbg(f"get_connected_account response: {response}")
             connected_account = response.connected_account
 
             print(f"   Connected Account ID: {connected_account.id}")
@@ -107,6 +120,7 @@ def generate_link(connection_name: str, identifier: str) -> None:
         except SystemExit:
             raise
         except Exception as e:
+            dbg(f"get_connected_account raised: {type(e).__name__}: {e}")
             print(f"\n{RED}❌ No connected account found for {connection_name}: {e}{RESET}")
             print(f"   Please create and configure this connection in the Scalekit Dashboard.")
             sys.exit(1)
@@ -115,10 +129,12 @@ def generate_link(connection_name: str, identifier: str) -> None:
     # OAuth flow
     connect = get_connect_client()
     try:
+        dbg(f"Calling get_or_create_connected_account(connection_name={connection_name}, identifier={identifier})")
         response = connect.get_or_create_connected_account(
             connection_name=connection_name,
             identifier=identifier
         )
+        dbg(f"get_or_create_connected_account response: {response}")
         connected_account = response.connected_account
 
         print(f"   Connected Account ID: {connected_account.id}")
@@ -127,10 +143,12 @@ def generate_link(connection_name: str, identifier: str) -> None:
         if connected_account.status != "ACTIVE":
             print(f"\n{YELLOW}⚠️  {connection_name} is not connected (status: {connected_account.status}){RESET}")
 
+            dbg(f"Calling get_authorization_link(connection_name={connection_name}, identifier={identifier})")
             link_response = connect.get_authorization_link(
                 connection_name=connection_name,
                 identifier=identifier
             )
+            dbg(f"get_authorization_link response: {link_response}")
 
             print(f"\n🔗 Click the link to authorize {connection_name}:")
             print(f"   {BLUE}{link_response.link}{RESET}")
@@ -142,6 +160,7 @@ def generate_link(connection_name: str, identifier: str) -> None:
             print(f"\n{GREEN}✅ {connection_name} is already connected and active!{RESET}")
 
     except Exception as e:
+        dbg(f"generate_link raised: {type(e).__name__}: {e}")
         print(f"\n{RED}❌ Error: {e}{RESET}")
         sys.exit(1)
 
@@ -170,12 +189,15 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
             # Non-OAuth: account must already exist and be active
             client = get_scalekit_client()
             try:
+                dbg(f"Calling get_connected_account(connection_name={connection_name}, identifier={identifier})")
                 response = client.actions.get_connected_account(
                     connection_name=connection_name,
                     identifier=identifier,
                 )
+                dbg(f"get_connected_account response: {response}")
                 connected_account = response.connected_account
-            except Exception:
+            except Exception as e:
+                dbg(f"get_connected_account raised: {type(e).__name__}: {e}")
                 print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
                 print(f"   Please create and configure this connection in the Scalekit Dashboard.")
                 sys.exit(1)
@@ -189,10 +211,12 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
                 sys.exit(1)
         else:
             # OAuth flow
+            dbg(f"Calling get_or_create_connected_account(connection_name={connection_name}, identifier={identifier})")
             response = connect.get_or_create_connected_account(
                 connection_name=connection_name,
                 identifier=identifier
             )
+            dbg(f"get_or_create_connected_account response: {response}")
             connected_account = response.connected_account
 
             print(f"   Connected Account ID: {connected_account.id}")
@@ -201,10 +225,12 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
             if connected_account.status != "ACTIVE":
                 print(f"\n{YELLOW}⚠️  {connection_name} is not connected (status: {connected_account.status}){RESET}")
 
+                dbg(f"Calling get_authorization_link(connection_name={connection_name}, identifier={identifier})")
                 link_response = connect.get_authorization_link(
                     connection_name=connection_name,
                     identifier=identifier
                 )
+                dbg(f"get_authorization_link response: {link_response}")
 
                 print(f"\n🔗 Click the link to authorize {connection_name}:")
                 print(f"   {BLUE}{link_response.link}{RESET}")
@@ -222,12 +248,14 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
 
         print(f"\n🔧 Executing tool: {BOLD}{tool_name}{RESET}")
 
+        dbg(f"Calling execute_tool(tool_name={tool_name}, identifier={identifier}, connected_account_id={connected_account.id}, tool_input={tool_input})")
         result = connect.execute_tool(
             tool_name=tool_name,
             identifier=identifier,
             connected_account_id=connected_account.id,
             tool_input=tool_input
         )
+        dbg(f"execute_tool raw result type: {type(result).__name__}")
 
         print(f"\n{GREEN}✅ Result:{RESET}")
         if isinstance(result, (dict, list)):
@@ -240,6 +268,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
     except SystemExit:
         raise
     except Exception as e:
+        dbg(f"execute_tool raised: {type(e).__name__}: {e}")
         print(f"\n{RED}❌ Error: {e}{RESET}")
         sys.exit(1)
 
@@ -276,6 +305,7 @@ def proxy_request(
     try:
         headers = {**(extra_headers or {})}
         form_data = None
+        dbg(f"proxy_request: method={method.upper()} path={path} query_params={query_params} body={body} extra_headers={extra_headers}")
 
         if input_file:
             filename = os.path.basename(input_file)
@@ -294,6 +324,7 @@ def proxy_request(
             form_data = prepared.body
             headers["Content-Type"] = prepared.headers["Content-Type"]
 
+        dbg(f"Calling client.actions.request(connection_name={connection_name}, identifier={identifier}, path={path}, method={method})")
         response = client.actions.request(
             connection_name=connection_name,
             identifier=identifier,
@@ -306,6 +337,7 @@ def proxy_request(
         )
 
         content_type = response.headers.get("Content-Type", "")
+        dbg(f"Proxy response: status={response.status_code} content_type={content_type} content_length={len(response.content)}")
         print(f"   Status: {response.status_code}")
         print(f"   Content-Type: {content_type}")
         print()
@@ -390,32 +422,43 @@ def _get_connection_type(connection_name: str) -> str:
     Look up the type (e.g. OAUTH, BEARER, BASIC) for a connection by its key_id.
     Returns the type string, or 'OAUTH' as a safe default if lookup fails.
     """
+    dbg(f"Looking up connection type for: {connection_name}")
     try:
         token = get_bearer_token()
-    except Exception:
+    except Exception as e:
+        dbg(f"Bearer token failed, defaulting to OAUTH: {e}")
         return "OAUTH"
 
     url = f"{TOOL_ENV_URL.rstrip('/')}/api/v1/connections/app"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     page_token = ""
+    page_num = 0
 
     while True:
+        page_num += 1
+        dbg(f"GET {url} page={page_num} page_token={page_token!r}")
         try:
             response = requests.get(url, params={"page_size": 30, "page_token": page_token}, headers=headers)
             response.raise_for_status()
             data = response.json()
-        except Exception:
+        except Exception as e:
+            dbg(f"Connection list request failed, defaulting to OAUTH: {e}")
             return "OAUTH"
 
-        for conn in data.get("connections", []):
+        connections_on_page = data.get("connections", [])
+        dbg(f"Page {page_num}: {len(connections_on_page)} connections")
+        for conn in connections_on_page:
             if conn.get("key_id") == connection_name:
-                return conn.get("type", "OAUTH")
+                conn_type = conn.get("type", "OAUTH")
+                dbg(f"Found connection {connection_name!r} → type={conn_type}")
+                return conn_type
 
         next_page_token = data.get("next_page_token", "")
         if not next_page_token:
             break
         page_token = next_page_token
 
+    dbg(f"Connection {connection_name!r} not found in any page, defaulting to OAUTH")
     return "OAUTH"
 
 
@@ -424,13 +467,17 @@ def get_bearer_token() -> str:
     Obtain a management API bearer token via OAuth2 client credentials grant.
     """
     token_url = f"{TOOL_ENV_URL.rstrip('/')}/oauth/token"
+    dbg(f"POST {token_url} (client_credentials)")
     response = requests.post(token_url, data={
         "grant_type": "client_credentials",
         "client_id": TOOL_CLIENT_ID,
         "client_secret": TOOL_CLIENT_SECRET,
     })
+    dbg(f"Token response status: {response.status_code}")
     response.raise_for_status()
-    return response.json()["access_token"]
+    token = response.json()["access_token"]
+    dbg(f"Bearer token obtained: {token[:16]}...")
+    return token
 
 
 def list_connections(provider: str = None, page_size: int = 20) -> None:
@@ -453,17 +500,24 @@ def list_connections(provider: str = None, page_size: int = 20) -> None:
 
     all_connections = []
     page_token = ""
+    page_num = 0
 
     while True:
+        page_num += 1
+        dbg(f"GET {url} page={page_num} page_size={page_size} page_token={page_token!r}")
         try:
             response = requests.get(url, params={"page_size": page_size, "page_token": page_token}, headers=headers)
+            dbg(f"Response status: {response.status_code}")
             response.raise_for_status()
             data = response.json()
         except Exception as e:
+            dbg(f"Request failed: {type(e).__name__}: {e}")
             print(f"\n{RED}❌ Error fetching connections: {e}{RESET}")
             sys.exit(1)
 
-        all_connections.extend(data.get("connections", []))
+        page_connections = data.get("connections", [])
+        dbg(f"Page {page_num}: {len(page_connections)} connections, next_page_token={data.get('next_page_token', '')!r}")
+        all_connections.extend(page_connections)
 
         next_page_token = data.get("next_page_token", "")
         if not next_page_token:
@@ -479,8 +533,7 @@ def list_connections(provider: str = None, page_size: int = 20) -> None:
         return
 
     if provider and len(connections) > 1:
-        print(f"{YELLOW}⚠️  Multiple connections found for {provider}, using the first one: {connections[0]['key_id']}{RESET}\n")
-        connections = [connections[0]]
+        print(f"{YELLOW}⚠️  Multiple connections found for {provider}.{RESET}\n")
 
     print(json.dumps(connections, indent=2))
 
@@ -508,11 +561,15 @@ def get_tool(tool_name: str = None, provider: str = None, page_size: int = None,
         if page_token:
             list_kwargs['page_token'] = page_token
 
+        dbg(f"Calling list_tools with kwargs: {list_kwargs}")
         response, _ = client.tools.list_tools(**list_kwargs)
         result = MessageToDict(response, preserving_proto_field_name=True)
+        tool_count = len(result.get("tools", []))
+        dbg(f"list_tools returned {tool_count} tool(s)")
         print(json.dumps(result, indent=2))
 
     except Exception as e:
+        dbg(f"get_tool raised: {type(e).__name__}: {e}")
         print(f"\n{RED}❌ Error: {e}{RESET}")
         sys.exit(1)
 
