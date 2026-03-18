@@ -8,3 +8,8 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "scalekit-sdk-python>=2.6.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

@@ -67,9 +67,11 @@ Dynamically resolve the `connection_name` by listing all configured connections 
 uv run tool_exec.py --list-connections --provider <PROVIDER>
 ```
 
-- Use the `key_id` from the first result as `<CONNECTION_NAME>` for all subsequent steps.
+- Only consider connections with `"status": "COMPLETED"` — ignore any with `DRAFT`, `PENDING`, or other non-completed statuses.
+- Use the `key_id` from the first **COMPLETED** result as `<CONNECTION_NAME>` for all subsequent steps.
 - If **no connection found** → inform the user that no `<PROVIDER>` connection is configured in Scalekit and stop.
-- If **multiple connections found** → the first one is selected automatically (a warning is shown).
+- If **connections exist but none are COMPLETED** → inform the user of the connection `key_id`(s) found and tell them the connection configuration is not completed. Ask them to complete setup in the Scalekit Dashboard and stop.
+- If **multiple COMPLETED connections found** → the first one is selected automatically (a warning is shown).
 
 ### Step 2 — Check & Authorize
 
@@ -196,6 +198,126 @@ User: "Fetch the blocks of a Notion page"
 3. `--get-tool --provider NOTION` → no `notion_blocks_fetch` tool found
 4. `--proxy-request --path "/blocks/<page_id>/children"` → fallback attempt
 5. If proxy disabled → inform user the action isn't available yet
+
+## File Uploads & Downloads
+
+Some providers do not have Scalekit tools for file operations. Use `--proxy-request` with `--input-file` (upload) or direct S3/CDN URL download (download). Provider-specific flows are documented below.
+
+> ⚠️ **Proxy token expiry:** `--proxy-request` passes the stored OAuth access token directly to the provider. If the token has expired, the provider will return `401 Unauthorized`. Unlike `--execute-tool` which auto-refreshes tokens, the proxy does not. If you get a 401, the token needs to be refreshed — re-run `--generate-link` to check status; if the connection is ACTIVE but proxy still returns 401, the user must re-authorize via a new magic link to obtain a fresh token.
+
+---
+
+### Notion
+
+#### Upload a File to a Notion Page
+
+Notion file uploads are a **3-step process** via proxy:
+
+**Step 1 — Create an upload object**
+
+```bash
+uv run tool_exec.py --proxy-request \
+  --connection-name <CONNECTION_NAME> \
+  --path "/v1/file_uploads" \
+  --method POST \
+  --body '{"mode": "single_part"}' \
+  --headers '{"Notion-Version": "2022-06-28", "Content-Type": "application/json"}'
+```
+
+Returns a `file_upload` object with an `id` and `upload_url`. The upload is valid for **1 hour**.
+
+**Step 2 — Send the file**
+
+```bash
+uv run tool_exec.py --proxy-request \
+  --connection-name <CONNECTION_NAME> \
+  --path "/v1/file_uploads/<file_upload_id>/send" \
+  --method POST \
+  --input-file /path/to/file \
+  --headers '{"Notion-Version": "2022-06-28"}'
+```
+
+- The file is sent as `multipart/form-data`. On success, `status` becomes `uploaded`.
+- ⚠️ Notion rejects `application/octet-stream`. If the file extension is not recognized (e.g. `.md`), copy it to a `.txt` extension first so the MIME type resolves to `text/plain`.
+
+**Step 3 — Attach the file block to a page**
+
+```bash
+uv run tool_exec.py --proxy-request \
+  --connection-name <CONNECTION_NAME> \
+  --path "/v1/blocks/<page_id>/children" \
+  --method PATCH \
+  --body '{
+    "children": [{
+      "object": "block",
+      "type": "file",
+      "file": {
+        "type": "file_upload",
+        "file_upload": {"id": "<file_upload_id>"},
+        "name": "<display_filename>"
+      }
+    }]
+  }' \
+  --headers '{"Notion-Version": "2022-06-28", "Content-Type": "application/json"}'
+```
+
+> Do **not** use `notion_page_content_append` for file blocks — it does not support the `file_upload` block type and will return an `INTERNAL_ERROR`. Always use the proxy for file attachment.
+
+---
+
+#### Download a File from a Notion Page
+
+Notion files are stored on S3 with pre-signed URLs that expire in **1 hour**. The download is a 2-step process:
+
+**Step 1 — Get a fresh pre-signed URL**
+
+List the page blocks to find the file block and its current URL:
+
+```bash
+uv run tool_exec.py --proxy-request \
+  --connection-name <CONNECTION_NAME> \
+  --path "/v1/blocks/<page_id>/children" \
+  --method GET \
+  --headers '{"Notion-Version": "2022-06-28"}'
+```
+
+Find the block with `"type": "file"` — the URL is at `file.file.url`. Always fetch a fresh URL; never reuse a URL from a previous response as it may be expired.
+
+**Step 2 — Download directly from S3**
+
+The S3 URL is public (pre-signed) — no Scalekit proxy needed. Download it directly:
+
+```python
+import urllib.request
+urllib.request.urlretrieve("<s3_url>", "/local/path/filename")
+```
+
+Or use `--output-file` if going through the proxy:
+
+```bash
+uv run tool_exec.py --proxy-request \
+  --connection-name <CONNECTION_NAME> \
+  --path "/v1/blocks/<block_id>" \
+  --method GET \
+  --headers '{"Notion-Version": "2022-06-28"}' \
+  --output-file /local/path/filename
+```
+
+> Note: `--output-file` saves the raw API response (JSON block object), not the file itself. Use direct S3 download for the actual file content.
+
+---
+
+### Google Drive
+
+> *Coming soon*
+
+---
+
+### OneDrive / SharePoint
+
+> *Coming soon*
+
+---
 
 ## Supported Providers
 
