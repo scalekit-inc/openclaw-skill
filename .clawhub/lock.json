@@ -2,7 +2,7 @@
   "version": 1,
   "skills": {
     "scalekit-agent-auth": {
-      "version": "2.2.0",
+      "version": "2.4.1",
       "installedAt": 1773674965433
     }
   }

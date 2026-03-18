@@ -117,7 +117,7 @@ def generate_link(connection_name: str, identifier: str) -> None:
     try:
         response = connect.get_or_create_connected_account(
             connection_name=connection_name,
-            identifier=identifier
+            identifier=identifier,
         )
         connected_account = response.connected_account
 
@@ -191,7 +191,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
             # OAuth flow
             response = connect.get_or_create_connected_account(
                 connection_name=connection_name,
-                identifier=identifier
+                identifier=identifier,
             )
             connected_account = response.connected_account
 
@@ -213,12 +213,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
                 print(f"{YELLOW}Authorize the link above, then re-run to execute.{RESET}")
                 sys.exit(0)
 
-                # Re-fetch connected account after authorization
-                response = connect.get_or_create_connected_account(
-                    connection_name=connection_name,
-                    identifier=identifier
-                )
-                connected_account = response.connected_account
+
 
         print(f"\n🔧 Executing tool: {BOLD}{tool_name}{RESET}")
 
