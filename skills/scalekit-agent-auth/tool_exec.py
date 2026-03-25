@@ -42,6 +42,18 @@ YELLOW = '\033[93m'
 BLUE = '\033[94m'
 RESET = '\033[0m'
 
+
+def _exit(code: int = 0) -> None:
+    """Force-exit the process, bypassing gRPC background thread cleanup.
+
+    sys.exit() raises SystemExit, but gRPC's non-daemon background threads can
+    block the interpreter from actually terminating — causing the command to hang
+    even after all user code has finished. os._exit() terminates immediately.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
+
 # Environment variables
 TOOL_CLIENT_ID = os.getenv('TOOL_CLIENT_ID', '')
 TOOL_CLIENT_SECRET = os.getenv('TOOL_CLIENT_SECRET', '')
@@ -100,7 +112,7 @@ def generate_link(connection_name: str, identifier: str) -> None:
             if connected_account.status != "ACTIVE":
                 print(f"\n{RED}❌ Connection {connection_name} exists but is not active (status: {connected_account.status}).{RESET}")
                 print(f"   Please activate it in the Scalekit Dashboard.")
-                sys.exit(1)
+                _exit(1)
             else:
                 print(f"\n{GREEN}✅ {connection_name} is connected and active!{RESET}")
 
@@ -109,7 +121,7 @@ def generate_link(connection_name: str, identifier: str) -> None:
         except Exception:
             print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
             print(f"   Please create and configure this connection in the Scalekit Dashboard.")
-            sys.exit(1)
+            _exit(1)
         return
 
     # OAuth flow
@@ -137,13 +149,13 @@ def generate_link(connection_name: str, identifier: str) -> None:
             print()
 
             print(f"{YELLOW}Authorize the link above, then re-run to continue.{RESET}")
-            sys.exit(0)
+            _exit(0)
         else:
             print(f"\n{GREEN}✅ {connection_name} is already connected and active!{RESET}")
 
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
 
 def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_input: dict) -> None:
@@ -178,7 +190,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
             except Exception:
                 print(f"\n{RED}❌ No connected account found for {connection_name}.{RESET}")
                 print(f"   Please create and configure this connection in the Scalekit Dashboard.")
-                sys.exit(1)
+                _exit(1)
 
             print(f"   Connected Account ID: {connected_account.id}")
             print(f"   Status: {connected_account.status}")
@@ -186,7 +198,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
             if connected_account.status != "ACTIVE":
                 print(f"\n{RED}❌ Connection {connection_name} exists but is not active (status: {connected_account.status}).{RESET}")
                 print(f"   Please activate it in the Scalekit Dashboard.")
-                sys.exit(1)
+                _exit(1)
         else:
             # OAuth flow
             response = connect.get_or_create_connected_account(
@@ -211,7 +223,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
                 print()
 
                 print(f"{YELLOW}Authorize the link above, then re-run to execute.{RESET}")
-                sys.exit(0)
+                _exit(0)
 
 
 
@@ -236,7 +248,7 @@ def execute_tool(tool_name: str, connection_name: str, identifier: str, tool_inp
         raise
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
 
 def proxy_request(
@@ -311,7 +323,7 @@ def proxy_request(
                 print(json.dumps(response.json(), indent=2))
             except Exception:
                 print(response.text)
-            sys.exit(1)
+            _exit(1)
 
         # Save to file if requested
         if output_file:
@@ -340,7 +352,7 @@ def proxy_request(
 
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
 
 def get_authorization(connection_name: str, identifier: str) -> None:
@@ -374,10 +386,10 @@ def get_authorization(connection_name: str, identifier: str) -> None:
 
     except KeyError as e:
         print(f"{RED}❌ Error: Could not find token key {e}. authorization_details: {connected_account.authorization_details}{RESET}")
-        sys.exit(1)
+        _exit(1)
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
 
 def _get_connection_type(connection_name: str) -> str:
@@ -396,7 +408,7 @@ def _get_connection_type(connection_name: str) -> str:
 
     while True:
         try:
-            response = requests.get(url, params={"page_size": 30, "page_token": page_token}, headers=headers)
+            response = requests.get(url, params={"page_size": 30, "page_token": page_token}, headers=headers, timeout=30)
             response.raise_for_status()
             data = response.json()
         except Exception:
@@ -423,7 +435,7 @@ def get_bearer_token() -> str:
         "grant_type": "client_credentials",
         "client_id": TOOL_CLIENT_ID,
         "client_secret": TOOL_CLIENT_SECRET,
-    })
+    }, timeout=30)
     response.raise_for_status()
     return response.json()["access_token"]
 
@@ -438,7 +450,7 @@ def list_connections(provider: str = None, page_size: int = 20) -> None:
         token = get_bearer_token()
     except Exception as e:
         print(f"\n{RED}❌ Failed to get bearer token: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
     url = f"{TOOL_ENV_URL.rstrip('/')}/api/v1/connections/app"
     headers = {
@@ -451,12 +463,12 @@ def list_connections(provider: str = None, page_size: int = 20) -> None:
 
     while True:
         try:
-            response = requests.get(url, params={"page_size": page_size, "page_token": page_token}, headers=headers)
+            response = requests.get(url, params={"page_size": page_size, "page_token": page_token}, headers=headers, timeout=30)
             response.raise_for_status()
             data = response.json()
         except Exception as e:
             print(f"\n{RED}❌ Error fetching connections: {e}{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         all_connections.extend(data.get("connections", []))
 
@@ -509,7 +521,7 @@ def get_tool(tool_name: str = None, provider: str = None, page_size: int = None,
 
     except Exception as e:
         print(f"\n{RED}❌ Error: {e}{RESET}")
-        sys.exit(1)
+        _exit(1)
 
 
 def main():
@@ -646,19 +658,19 @@ Required environment variables:
     # Validate environment variables
     if not TOOL_CLIENT_ID:
         print(f"{RED}❌ Error: TOOL_CLIENT_ID environment variable is required{RESET}")
-        sys.exit(1)
+        _exit(1)
     if not TOOL_CLIENT_SECRET:
         print(f"{RED}❌ Error: TOOL_CLIENT_SECRET environment variable is required{RESET}")
-        sys.exit(1)
+        _exit(1)
     if not TOOL_ENV_URL:
         print(f"{RED}❌ Error: TOOL_ENV_URL environment variable is required{RESET}")
-        sys.exit(1)
+        _exit(1)
 
     # Resolve identifier: env var → CLI arg → error
     if not args.identifier:
         if not TOOL_IDENTIFIER:
             print(f"{RED}❌ Identifier is required. Set TOOL_IDENTIFIER in .env or pass --identifier.{RESET}")
-            sys.exit(1)
+            _exit(1)
         else:
             args.identifier = TOOL_IDENTIFIER
 
@@ -672,10 +684,10 @@ Required environment variables:
 
         if not args.connection_name:
             print(f"{RED}❌ Error: --connection-name is required for --generate-link{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.identifier:
             print(f"{RED}❌ Error: --identifier is required for --generate-link{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         generate_link(
             connection_name=args.connection_name,
@@ -688,22 +700,22 @@ Required environment variables:
 
         if not args.connection_name:
             print(f"{RED}❌ Error: --connection-name is required for --execute-tool{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.identifier:
             print(f"{RED}❌ Error: --identifier is required for --execute-tool{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.tool_name:
             print(f"{RED}❌ Error: --tool-name is required for --execute-tool{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.tool_input:
             print(f"{RED}❌ Error: --tool-input is required for --execute-tool{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         try:
             tool_input = json.loads(args.tool_input)
         except json.JSONDecodeError as e:
             print(f"{RED}❌ Error: --tool-input is not valid JSON: {e}{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         execute_tool(
             tool_name=args.tool_name,
@@ -718,13 +730,13 @@ Required environment variables:
 
         if not args.connection_name:
             print(f"{RED}❌ Error: --connection-name is required for --proxy-request{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.identifier:
             print(f"{RED}❌ Error: --identifier is required for --proxy-request{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.path:
             print(f"{RED}❌ Error: --path is required for --proxy-request{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         query_params = None
         if args.query_params:
@@ -732,7 +744,7 @@ Required environment variables:
                 query_params = json.loads(args.query_params)
             except json.JSONDecodeError as e:
                 print(f"{RED}❌ Error: --query-params is not valid JSON: {e}{RESET}")
-                sys.exit(1)
+                _exit(1)
 
         body = None
         if args.body:
@@ -740,7 +752,7 @@ Required environment variables:
                 body = json.loads(args.body)
             except json.JSONDecodeError as e:
                 print(f"{RED}❌ Error: --body is not valid JSON: {e}{RESET}")
-                sys.exit(1)
+                _exit(1)
 
         extra_headers = None
         if args.headers:
@@ -748,7 +760,7 @@ Required environment variables:
                 extra_headers = json.loads(args.headers)
             except json.JSONDecodeError as e:
                 print(f"{RED}❌ Error: --headers is not valid JSON: {e}{RESET}")
-                sys.exit(1)
+                _exit(1)
 
         proxy_request(
             connection_name=args.connection_name,
@@ -768,10 +780,10 @@ Required environment variables:
 
         if not args.connection_name:
             print(f"{RED}❌ Error: --connection-name is required for --get-authorization{RESET}")
-            sys.exit(1)
+            _exit(1)
         if not args.identifier:
             print(f"{RED}❌ Error: --identifier is required for --get-authorization{RESET}")
-            sys.exit(1)
+            _exit(1)
 
         get_authorization(
             connection_name=args.connection_name,
