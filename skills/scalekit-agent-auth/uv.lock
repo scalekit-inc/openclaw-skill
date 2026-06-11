@@ -548,7 +548,7 @@ dev = [
 requires-dist = [
     { name = "protobuf", specifier = ">=5.29.6" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
-    { name = "scalekit-sdk-python", specifier = ">=2.9.0" },
+    { name = "scalekit-sdk-python", specifier = ">=2.12.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -961,7 +961,7 @@ wheels = [
 
 [[package]]
 name = "scalekit-sdk-python"
-version = "2.10.0"
+version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cffi" },
@@ -981,9 +981,9 @@ dependencies = [
     { name = "requests" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/28/badf0104d64dc447c718e0ed2433f9c85f97bee0a65736c6acb680d0d743/scalekit_sdk_python-2.10.0.tar.gz", hash = "sha256:197e3f4b72b37e7f2fcde45bd5144766e4d091754b2a53a6a98e03e7c13543fd", size = 519973, upload-time = "2026-05-13T06:45:45.567Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/ab/1e933f2f6e996cc7cbde10440e2158a568f727512dfa454ce81fe64e4052/scalekit_sdk_python-2.12.0.tar.gz", hash = "sha256:9c49a1bd4995aca4b2469f4384846e90b6ee812b12246f30014d0259b05a2db4", size = 539454, upload-time = "2026-06-08T18:08:18.236Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/d8/95b5b7054ec924cd8c4549863763b74ba55488870f53f5b5b6515092a20f/scalekit_sdk_python-2.10.0-py3-none-any.whl", hash = "sha256:971a87e40a068455a4f316d38d8db7c41c47722e9691fec3f2940fa68a95dc68", size = 557462, upload-time = "2026-05-13T06:45:43.4Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/bd/5af289b231ef987f30687eb194caf34f1c3b4400c0c964ebe9dfdf8efcf4/scalekit_sdk_python-2.12.0-py3-none-any.whl", hash = "sha256:95abd097c836b76c093361e6418e3e43412dba6e3a5beb1694bbafd9a07a640d", size = 575725, upload-time = "2026-06-08T18:08:16.682Z" },
 ]
 
 [[package]]
